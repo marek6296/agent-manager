@@ -9,6 +9,7 @@ import { Bot, Play, Square, Trash2, ChevronRight, Clock, Cpu, Zap, Pencil } from
 import Link from "next/link";
 import type { Agent } from "@/lib/types";
 import { EditAgentDialog } from "./edit-agent-dialog";
+import { StartAgentDialog } from "./start-agent-dialog";
 
 function getAgentTypeLabel(type: string): string {
   const labels: Record<string, string> = {
@@ -33,9 +34,16 @@ function getAgentTypeIcon(type: string) {
 
 export function AgentCard({ agent }: { agent: Agent }) {
   const [editOpen, setEditOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
 
   const handleToggle = async () => {
-    await toggleAgentStatus(agent.id, agent.status === "running" ? "stopped" : "running");
+    if (agent.status === "running") {
+      // Stopping: do it directly, no dialog needed
+      await toggleAgentStatus(agent.id, "stopped");
+    } else {
+      // Starting: show the start options dialog
+      setStartOpen(true);
+    }
   };
 
   const handleDelete = async () => {
@@ -117,6 +125,7 @@ export function AgentCard({ agent }: { agent: Agent }) {
       </CardContent>
 
       <EditAgentDialog agent={agent} open={editOpen} onClose={() => setEditOpen(false)} />
+      <StartAgentDialog agent={agent} open={startOpen} onClose={() => setStartOpen(false)} />
     </Card>
   );
 }

@@ -42,6 +42,28 @@ export async function updateAgent(id: string, data: { name?: string; type?: stri
   revalidatePath(`/agents/${id}`);
 }
 
+export async function setAgentStartPoint(
+  id: string,
+  startFrom: string | null,
+  currentConfig: Record<string, unknown>
+) {
+  const supabase = await createClient();
+
+  const newConfig = {
+    ...currentConfig,
+    // null means "process all unread", a date string means "only after this time"
+    last_run_at: startFrom,
+  };
+
+  const { error } = await supabase.from("agents").update({
+    config_json: newConfig,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/agents");
+}
+
 export async function toggleAgentStatus(id: string, newStatus: "running" | "stopped") {
   const supabase = await createClient();
 
