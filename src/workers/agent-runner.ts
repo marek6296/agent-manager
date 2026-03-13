@@ -1,13 +1,23 @@
 // Agent Runner - Background Worker System
 // Scans for active agents and executes them periodically
+// Tracks last_run_at per agent to only process NEW emails
 
 import { createClient } from "@supabase/supabase-js";
 import { generateText, summarize, generateReply } from "@/lib/ai";
 import { getInboxMessages, sendEmail, refreshAccessToken } from "@/lib/integrations/gmail";
-import type { Agent, Integration } from "@/lib/types";
+import type { Agent } from "@/lib/types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+// Update agent's last_run_at in config_json
+async function updateLastRunAt(agentId: string, configJson: Record<string, unknown>) {
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  await supabase.from("agents").update({
+    config_json: { ...configJson, last_run_at: new Date().toISOString() },
+    updated_at: new Date().toISOString(),
+  }).eq("id", agentId);
+}
 
 async function getGmailTokens(userId: string): Promise<{ accessToken: string } | null> {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);

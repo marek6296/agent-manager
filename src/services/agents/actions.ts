@@ -29,21 +29,11 @@ export async function createAgent(formData: FormData) {
   revalidatePath("/agents");
 }
 
-export async function updateAgent(id: string, formData: FormData) {
+export async function updateAgent(id: string, data: { name?: string; type?: string; prompt?: string; schedule?: string; integration_id?: string | null }) {
   const supabase = await createClient();
 
-  const name = formData.get("name") as string;
-  const type = formData.get("type") as string;
-  const prompt = formData.get("prompt") as string;
-  const schedule = formData.get("schedule") as string;
-  const integrationId = formData.get("integration_id") as string || null;
-
   const { error } = await supabase.from("agents").update({
-    name,
-    type,
-    prompt,
-    schedule,
-    integration_id: integrationId || null,
+    ...data,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
 

@@ -1,12 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { toggleAgentStatus, deleteAgent } from "@/services/agents/actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Bot, Play, Square, Trash2, ChevronRight, Clock, Cpu, Zap } from "lucide-react";
+import { Bot, Play, Square, Trash2, ChevronRight, Clock, Cpu, Zap, Pencil } from "lucide-react";
 import Link from "next/link";
 import type { Agent } from "@/lib/types";
+import { EditAgentDialog } from "./edit-agent-dialog";
 
 function getAgentTypeLabel(type: string): string {
   const labels: Record<string, string> = {
@@ -30,6 +32,8 @@ function getAgentTypeIcon(type: string) {
 }
 
 export function AgentCard({ agent }: { agent: Agent }) {
+  const [editOpen, setEditOpen] = useState(false);
+
   const handleToggle = async () => {
     await toggleAgentStatus(agent.id, agent.status === "running" ? "stopped" : "running");
   };
@@ -84,7 +88,7 @@ export function AgentCard({ agent }: { agent: Agent }) {
         </div>
 
         <div className="flex items-center justify-between pt-3 border-t border-zinc-800/50">
-          <div className="flex gap-2">
+          <div className="flex gap-1">
             <Button
               variant="ghost"
               size="sm"
@@ -97,6 +101,9 @@ export function AgentCard({ agent }: { agent: Agent }) {
                 <><Play className="w-3.5 h-3.5 mr-1" /> Start</>
               )}
             </Button>
+            <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)} className="text-zinc-400 hover:text-zinc-200">
+              <Pencil className="w-3.5 h-3.5" />
+            </Button>
             <Button variant="ghost" size="sm" onClick={handleDelete} className="text-red-400 hover:text-red-300">
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
@@ -108,6 +115,8 @@ export function AgentCard({ agent }: { agent: Agent }) {
           </Link>
         </div>
       </CardContent>
+
+      <EditAgentDialog agent={agent} open={editOpen} onClose={() => setEditOpen(false)} />
     </Card>
   );
 }
