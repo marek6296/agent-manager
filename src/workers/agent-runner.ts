@@ -4,7 +4,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { generateText, summarize, generateReply } from "@/lib/ai";
-import { getInboxMessages, sendEmail, refreshAccessToken } from "@/lib/integrations/gmail";
+import { getInboxMessages, sendEmail, refreshAccessToken, markAsRead } from "@/lib/integrations/gmail";
 import type { Agent } from "@/lib/types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -141,6 +141,9 @@ async function executeMultiCapabilityAgent(agent: Agent) {
         await logAgentActivity(agent.id, "error", `Auto-reply failed: ${err instanceof Error ? err.message : "Unknown"}`);
       }
     }
+
+    // Mark as read so this email is never processed again
+    await markAsRead(tokens.accessToken, msg.id);
   }
 
   await updateLastRunAt(agent.id, config);

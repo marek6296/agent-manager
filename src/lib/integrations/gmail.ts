@@ -240,6 +240,21 @@ function parseGmailMessage(msgData: Record<string, unknown>): GmailMessage {
   };
 }
 
+/**
+ * Mark a Gmail message as read (removes UNREAD label).
+ * Called after processing an email to prevent re-processing on next cycle.
+ */
+export async function markAsRead(accessToken: string, messageId: string): Promise<void> {
+  await fetch(`${GMAIL_API_BASE}/users/me/messages/${messageId}/modify`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ removeLabelIds: ["UNREAD"] }),
+  });
+}
+
 export async function sendEmail(
   accessToken: string,
   to: string,
