@@ -69,9 +69,15 @@ async function executeEmailSummarizer(agent: Agent) {
   }
 
   try {
-    const messages = await getInboxMessages(tokens.accessToken, 5);
+    const config = (agent.config_json || {}) as Record<string, unknown>;
+    const lastRunAt = config.last_run_at ? new Date(config.last_run_at as string) : undefined;
+    const skipAutomated = config.skip_automated !== false; // default true
+    const afterLabel = lastRunAt ? ` since ${lastRunAt.toLocaleTimeString()}` : " (first run - last 5 unread)";
+
+    const messages = await getInboxMessages(tokens.accessToken, 5, lastRunAt, skipAutomated);
     if (messages.length === 0) {
-      await logAgentActivity(agent.id, "info", "No new emails to summarize");
+      await logAgentActivity(agent.id, "info", `No new emails${afterLabel}`);
+      await updateLastRunAt(agent.id, config);
       return;
     }
 
@@ -85,6 +91,7 @@ async function executeEmailSummarizer(agent: Agent) {
         `Summarized: "${msg.subject}" → ${summary.substring(0, 200)}...`
       );
     }
+    await updateLastRunAt(agent.id, config);
   } catch (err) {
     await logAgentActivity(agent.id, "error", `Error: ${err instanceof Error ? err.message : "Unknown"}`);
   }
@@ -98,9 +105,14 @@ async function executeEmailAutoReply(agent: Agent) {
   }
 
   try {
-    const messages = await getInboxMessages(tokens.accessToken, 3);
+    const config = (agent.config_json || {}) as Record<string, unknown>;
+    const lastRunAt = config.last_run_at ? new Date(config.last_run_at as string) : undefined;
+    const skipAutomated = config.skip_automated !== false; // default true
+
+    const messages = await getInboxMessages(tokens.accessToken, 3, lastRunAt, skipAutomated);
     if (messages.length === 0) {
-      await logAgentActivity(agent.id, "info", "No emails to reply to");
+      await logAgentActivity(agent.id, "info", "No new emails to reply to");
+      await updateLastRunAt(agent.id, config);
       return;
     }
 

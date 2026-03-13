@@ -85,17 +85,36 @@ export async function refreshAccessToken(refreshToken: string): Promise<GmailTok
 export async function getInboxMessages(
   accessToken: string,
   maxResults: number = 10,
-  afterDate?: Date
+  afterDate?: Date,
+  skipAutomated: boolean = true
 ): Promise<GmailMessage[]> {
   // Build query: only fetch unread emails, optionally newer than afterDate
   let q = "is:unread";
   if (afterDate) {
-    // Gmail `after:` uses Unix timestamp in seconds
     q += ` after:${Math.floor(afterDate.getTime() / 1000)}`;
+  }
+  if (skipAutomated) {
+    // Exclude automated senders and categories
+    q += [
+      " -from:noreply",
+      " -from:no-reply",
+      " -from:notifications",
+      " -from:notification",
+      " -from:donotreply",
+      " -from:do-not-reply",
+      " -from:mailer",
+      " -from:bounce",
+      " -from:automated",
+      " -from:newsletter",
+      " -from:alerts",
+      " -from:support@vercel",
+      " -from:github",
+      " -category:promotions",
+      " -category:updates",
+    ].join("");
   }
   const listResponse = await fetch(
     `${GMAIL_API_BASE}/users/me/messages?maxResults=${maxResults}&labelIds=INBOX&q=${encodeURIComponent(q)}`,
-
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 

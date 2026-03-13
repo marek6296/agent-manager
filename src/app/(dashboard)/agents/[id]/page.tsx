@@ -125,6 +125,19 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                 <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Created</p>
                 <p className="text-sm text-zinc-400">{new Date(typedAgent.created_at).toLocaleDateString()}</p>
               </div>
+              {(typedAgent.type === "email_summarizer" || typedAgent.type === "email_auto_reply") && (
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Email Filter</p>
+                  <div className={`flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-lg w-fit ${
+                    config.skip_automated !== false
+                      ? "bg-violet-600/10 text-violet-300 border border-violet-500/20"
+                      : "bg-zinc-800 text-zinc-400"
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${config.skip_automated !== false ? "bg-violet-400" : "bg-zinc-500"}`} />
+                    {config.skip_automated !== false ? "Skipping automated emails" : "Processing all emails"}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
