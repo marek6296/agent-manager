@@ -132,3 +132,18 @@ export async function deleteAgent(id: string) {
   revalidatePath("/agents");
   revalidatePath("/dashboard");
 }
+
+export async function clearAgentSummaries(agentId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  // Delete all summary/analysis/pending logs for this agent
+  await supabase
+    .from("agent_logs")
+    .delete()
+    .eq("agent_id", agentId)
+    .in("level", ["success", "info", "pending_reply", "sent", "rejected"]);
+
+  revalidatePath(`/agents/${agentId}`);
+}

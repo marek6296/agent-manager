@@ -7,6 +7,7 @@ import Link from "next/link";
 import { AgentDetailActions } from "@/components/dashboard/agent-detail-actions";
 import { RunNowButton } from "@/components/dashboard/run-now-button";
 import { PendingRepliesPanel } from "@/components/dashboard/pending-replies-panel";
+import { ClearSummariesButton } from "@/components/dashboard/clear-summaries-button";
 import type { Agent, AgentLog } from "@/lib/types";
 
 const agentTypeInfo: Record<string, { what: string; how: string; promptLabel: string }> = {
@@ -166,9 +167,14 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                   <Mail className="w-4 h-4 text-emerald-400" />
                   Email Summaries
                 </CardTitle>
-                <span className="text-xs text-zinc-500 bg-zinc-800 px-2.5 py-1 rounded-full">
-                  {summaryLogs.length} processed
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500 bg-zinc-800 px-2.5 py-1 rounded-full">
+                    {summaryLogs.length} processed
+                  </span>
+                  {summaryLogs.length > 0 && (
+                    <ClearSummariesButton agentId={typedAgent.id} />
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {summaryLogs.length > 0 ? (
