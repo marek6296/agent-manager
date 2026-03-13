@@ -1,7 +1,11 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export async function createAgent(formData: FormData) {
   const supabase = await createClient();
@@ -134,16 +138,28 @@ export async function deleteAgent(id: string) {
 }
 
 export async function clearAgentSummaries(agentId: string) {
+  // Verify the user owns this agent
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  // Delete all summary/analysis/pending logs for this agent
-  await supabase
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("id")
+    .eq("id", agentId)
+    .eq("user_id", user.id)
+    .single();
+  if (!agent) throw new Error("Agent not found or unauthorized");
+
+  // Use admin client to bypass RLS for the delete
+  const admin = createAdminClient(supabaseUrl, supabaseServiceKey);
+  const { error } = await admin
     .from("agent_logs")
     .delete()
-    .eq("agent_id", agentId)
-    .in("level", ["success", "info", "pending_reply", "sent", "rejected"]);
+    .eq("agent_id", agentId);
+
+  if (error) throw new Error(error.message);
 
   revalidatePath(`/agents/${agentId}`);
+  revalidatePath("/agents");
 }
