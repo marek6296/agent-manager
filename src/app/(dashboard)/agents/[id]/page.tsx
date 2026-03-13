@@ -2,10 +2,34 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bot, Clock, Cpu, ArrowLeft, Activity } from "lucide-react";
+import { Bot, Clock, Cpu, ArrowLeft, Activity, Zap, Info } from "lucide-react";
 import Link from "next/link";
 import { AgentDetailActions } from "@/components/dashboard/agent-detail-actions";
+import { RunNowButton } from "@/components/dashboard/run-now-button";
 import type { Agent, AgentLog } from "@/lib/types";
+
+const agentTypeInfo: Record<string, { what: string; how: string; promptLabel: string }> = {
+  email_summarizer: {
+    what: "Reads your unread emails and creates AI summaries",
+    how: "Every cycle: fetches unread Gmail → runs each email through AI → logs summary to /logs",
+    promptLabel: "Custom summary instructions (e.g. 'highlight deadlines and action items')",
+  },
+  email_auto_reply: {
+    what: "Automatically replies to new emails using AI",
+    how: "Every cycle: fetches unread Gmail → generates AI reply using your prompt → sends reply via Gmail",
+    promptLabel: "Reply tone/style (e.g. 'professional and concise, always offer a meeting')",
+  },
+  data_analyzer: {
+    what: "Runs AI analysis based on your custom prompt",
+    how: "Every cycle: sends your prompt to AI → logs the result to /logs",
+    promptLabel: "Analysis prompt (e.g. 'Summarize key business trends from the data')",
+  },
+  custom: {
+    what: "Custom AI agent",
+    how: "Runs your custom prompt through AI every cycle",
+    promptLabel: "Agent instructions",
+  },
+};
 
 export default async function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,6 +44,9 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
 
   const typedAgent = agent as Agent;
   const typedLogs = (logs as AgentLog[]) || [];
+  const agentInfo = agentTypeInfo[typedAgent.type] || agentTypeInfo.custom;
+  const config = (typedAgent.config_json || {}) as Record<string, unknown>;
+  const lastRunAt = config.last_run_at ? new Date(config.last_run_at as string).toLocaleString() : "Never";
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -41,9 +68,25 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
               {typedAgent.status}
             </Badge>
           </div>
-          <p className="text-zinc-400 mt-1">Agent Configuration & Logs</p>
+          <p className="text-zinc-400 mt-1">{agentInfo.what}</p>
         </div>
-        <AgentDetailActions agent={typedAgent} />
+        <div className="flex items-center gap-3">
+          {typedAgent.status === "running" && <RunNowButton agentId={typedAgent.id} />}
+          <AgentDetailActions agent={typedAgent} />
+        </div>
+      </div>
+
+      {/* How it works banner */}
+      <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-600/5 border border-blue-500/20">
+        <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-sm font-medium text-blue-300">How this agent works</p>
+          <p className="text-xs text-zinc-400 mt-0.5">{agentInfo.how}</p>
+          <p className="text-xs text-zinc-500 mt-2">
+            Last run: <span className="text-zinc-300">{lastRunAt}</span>
+            {typedAgent.status === "running" && " · Runs automatically every minute via cron"}
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -70,7 +113,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
               </div>
               {typedAgent.prompt && (
                 <div>
-                  <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">AI Instructions</p>
+                  <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">{agentInfo.promptLabel}</p>
                   <p className="text-sm text-zinc-300 bg-zinc-800/50 p-3 rounded-lg">{typedAgent.prompt}</p>
                 </div>
               )}
