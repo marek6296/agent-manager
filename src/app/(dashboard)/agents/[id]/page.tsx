@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bot, Clock, Cpu, ArrowLeft, Activity, Zap, Info } from "lucide-react";
+import { Bot, Clock, Cpu, ArrowLeft, Activity, Info, Mail } from "lucide-react";
 import Link from "next/link";
 import { AgentDetailActions } from "@/components/dashboard/agent-detail-actions";
 import { RunNowButton } from "@/components/dashboard/run-now-button";
@@ -47,6 +47,10 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
   const agentInfo = agentTypeInfo[typedAgent.type] || agentTypeInfo.custom;
   const config = (typedAgent.config_json || {}) as Record<string, unknown>;
   const lastRunAt = config.last_run_at ? new Date(config.last_run_at as string).toLocaleString() : "Never";
+  // Extract summary-type logs for the email_summarizer panel
+  const summaryLogs = typedLogs.filter(
+    (l) => l.level === "success" && l.message.startsWith("Summarized:")
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -125,20 +129,59 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
           </Card>
         </div>
 
-        {/* Logs */}
+        {/* Right panel — tabs */}
         <div className="lg:col-span-2">
+          {/* Email Summaries — only for email_summarizer */}
+          {typedAgent.type === "email_summarizer" && (
+            <div className="mb-6 space-y-3">
+              <h2 className="text-base font-semibold text-zinc-200 flex items-center gap-2">
+                <Mail className="w-4 h-4 text-emerald-400" />
+                Email Summaries
+                <span className="text-xs font-normal text-zinc-500 ml-1">({summaryLogs.length} emails processed)</span>
+              </h2>
+              {summaryLogs.length > 0 ? (
+                <div className="space-y-3">
+                  {summaryLogs.map((log: AgentLog) => {
+                    // Parse: Summarized: "Subject" → Summary text
+                    const arrow = log.message.indexOf(" → ");
+                    const subjectPart = log.message.slice(13, arrow).replace(/^"|"$/g, "");
+                    const summaryPart = arrow > 0 ? log.message.slice(arrow + 3).replace(/\.\.\.$/, "") : log.message;
+                    return (
+                      <Card key={log.id} className="border-emerald-500/10 bg-emerald-600/5">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <p className="text-sm font-medium text-zinc-100">📧 {subjectPart}</p>
+                            <p className="text-xs text-zinc-600 shrink-0">{new Date(log.created_at).toLocaleString()}</p>
+                          </div>
+                          <p className="text-sm text-zinc-400 leading-relaxed">{summaryPart}</p>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-10 text-zinc-600 border border-zinc-800/50 rounded-xl">
+                  <Mail className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">No emails summarized yet</p>
+                  <p className="text-xs mt-1">Start the agent and click "Run Now" to process your inbox</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Activity Log */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Activity className="w-4 h-4 text-emerald-400" />
+                <Activity className="w-4 h-4 text-violet-400" />
                 Activity Log
               </CardTitle>
             </CardHeader>
             <CardContent>
               {typedLogs.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {typedLogs.map((log) => (
-                    <div key={log.id} className="flex items-start gap-3 py-2.5 border-b border-zinc-800/50 last:border-0">
+                    <div key={log.id} className="flex items-start gap-3 py-2.5 border-b border-zinc-800/30 last:border-0">
                       <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
                         log.level === "error" ? "bg-red-400" :
                         log.level === "warning" ? "bg-amber-400" :
@@ -152,7 +195,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                         log.level === "error" ? "destructive" :
                         log.level === "warning" ? "warning" :
                         log.level === "success" ? "success" : "secondary"
-                      } className="shrink-0">
+                      } className="shrink-0 text-xs">
                         {log.level}
                       </Badge>
                     </div>
