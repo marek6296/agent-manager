@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  Inbox,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { Button } from "@/components/ui/button";
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Agents", href: "/agents", icon: Bot },
+  { name: "Inbox", href: "/inbox", icon: Inbox },
   { name: "Workflows", href: "/workflows", icon: Workflow },
   { name: "Integrations", href: "/integrations", icon: Plug },
   { name: "Logs", href: "/logs", icon: ScrollText },

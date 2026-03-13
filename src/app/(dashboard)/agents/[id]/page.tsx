@@ -58,7 +58,10 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
     : typedAgent.type === "data_analyzer" ? ["analyze"]
     : ["summarize"];
 
-  const summaryLogs = typedLogs.filter((l) => l.level === "success" && l.message.startsWith("Summarized:"));
+  const summaryLogs = typedLogs.filter(
+    (l) => l.level === "success" && (l.message.startsWith("Summarized:") || l.message.startsWith("INBOX_DATA:"))
+  );
+
   const pendingLogs = typedLogs.filter((l) => l.level === "pending_reply");
   const analysisLogs = typedLogs.filter((l) => l.level === "info" && l.message.startsWith("Analyzed:"));
 
@@ -180,15 +183,28 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                 {summaryLogs.length > 0 ? (
                   <div className="space-y-3">
                     {summaryLogs.map((log: AgentLog) => {
-                      const arrow = log.message.indexOf(" → ");
-                      const subjectPart = log.message.slice(13, arrow).replace(/^"|"$/g, "");
-                      const summaryPart = arrow > 0 ? log.message.slice(arrow + 3).replace(/\.\.\.$/, "") : log.message;
+                      let subject = "", from = "", summaryPart = "";
+                      if (log.message.startsWith("INBOX_DATA:")) {
+                        try {
+                          const d = JSON.parse(log.message.slice("INBOX_DATA:".length));
+                          subject = d.subject || "(no subject)";
+                          from = d.from ? (d.from.match(/^([^<]+)</) ? d.from.match(/^([^<]+)</)[1].trim() : d.from.split("@")[0]) : "";
+                          summaryPart = d.summary || "";
+                        } catch { subject = "Email"; }
+                      } else {
+                        const arrow = log.message.indexOf(" → ");
+                        subject = log.message.slice(13, arrow).replace(/^"|"$/g, "");
+                        summaryPart = arrow > 0 ? log.message.slice(arrow + 3).replace(/\.\.\.$/, "") : log.message;
+                      }
                       return (
                         <div key={log.id} className="p-4 rounded-xl border border-zinc-800 hover:border-emerald-500/30 bg-zinc-900/50 hover:bg-emerald-600/5 transition-all duration-200">
                           <div className="flex items-start justify-between gap-3 mb-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <span>📧</span>
-                              <p className="text-sm font-semibold text-zinc-100 truncate">{subjectPart}</p>
+                              <div className="min-w-0">
+                                {from && <p className="text-xs text-zinc-500 truncate">{from}</p>}
+                                <p className="text-sm font-semibold text-zinc-100 truncate">{subject}</p>
+                              </div>
                             </div>
                             <p className="text-xs text-zinc-600 shrink-0">{new Date(log.created_at).toLocaleString()}</p>
                           </div>

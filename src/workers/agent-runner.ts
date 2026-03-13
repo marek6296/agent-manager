@@ -88,9 +88,15 @@ async function executeMultiCapabilityAgent(agent: Agent) {
     if (caps.includes("summarize")) {
       try {
         const summary = await summarize(emailContext);
-        await logAgentActivity(agent.id, "success",
-          `Summarized: "${msg.subject}" → ${summary.substring(0, 300)}...`
-        );
+        // Store as structured JSON for the Inbox view
+        const logData = JSON.stringify({
+          type: "summary",
+          subject: msg.subject,
+          from: msg.from,
+          date: msg.date,
+          summary,
+        });
+        await logAgentActivity(agent.id, "success", `INBOX_DATA:${logData}`);
       } catch (err) {
         await logAgentActivity(agent.id, "error", `Summarize failed: ${err instanceof Error ? err.message : "Unknown"}`);
       }
