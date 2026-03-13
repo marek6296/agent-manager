@@ -88,11 +88,10 @@ export async function getInboxMessages(
   afterDate?: Date,
   skipAutomated: boolean = true
 ): Promise<GmailMessage[]> {
-  // Build query: only fetch unread emails, optionally newer than afterDate
-  let q = "is:unread in:inbox";
-  if (afterDate) {
-    q += ` after:${Math.floor(afterDate.getTime() / 1000)}`;
-  }
+  // Dedup is via after:TIMESTAMP only — NOT is:unread
+  // This way emails stay processable after markAsRead or log clearing
+  const effectiveAfter = afterDate ?? new Date(Date.now() - 48 * 60 * 60 * 1000); // default: last 48h
+  let q = `in:inbox after:${Math.floor(effectiveAfter.getTime() / 1000)}`;
   if (skipAutomated) {
     q += [
       // THE most powerful filter — Gmail auto-tags bulk emails with unsubscribe links

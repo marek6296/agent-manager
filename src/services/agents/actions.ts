@@ -145,7 +145,7 @@ export async function clearAgentSummaries(agentId: string) {
 
   const { data: agent } = await supabase
     .from("agents")
-    .select("id")
+    .select("id, config_json")
     .eq("id", agentId)
     .eq("user_id", user.id)
     .single();
@@ -159,6 +159,14 @@ export async function clearAgentSummaries(agentId: string) {
     .eq("agent_id", agentId);
 
   if (error) throw new Error(error.message);
+
+  // Reset last_run_at to 48h ago → next run will reprocess recent emails
+  const config = ((agent.config_json as Record<string, unknown>) || {});
+  const newConfig = {
+    ...config,
+    last_run_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+  };
+  await admin.from("agents").update({ config_json: newConfig }).eq("id", agentId);
 
   revalidatePath(`/agents/${agentId}`);
   revalidatePath("/agents");
