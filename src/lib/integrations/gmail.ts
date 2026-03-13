@@ -109,16 +109,16 @@ export async function getInboxMessages(
       " -from:donotreply",
       " -from:do-not-reply",
       " -from:mailer",
-      " -from:notification",
+      " -from:notification",   // catches notifications@vercel.com, notifications@github.com etc.
       " -from:newsletter",
       " -from:alerts",
       " -from:autoconfirm",
       " -from:automated",
       " -from:bounce",
-      " -from:info@vercel",
-      " -from:support@vercel",
-      " -from:github",
-      " -from:supabase",
+      " -from:vercel.com",     // all Vercel emails
+      " -from:github.com",     // all GitHub emails
+      " -from:supabase.io",    // all Supabase emails
+      " -from:supabase.com",
     ].join("");
   }
 
