@@ -19,18 +19,18 @@ interface StartOption {
 
 const startOptions: StartOption[] = [
   {
+    id: "recent",
+    label: "Recent emails (last 48h)",
+    description: "Process emails from the last 2 days — best for first run",
+    icon: Inbox,
+    color: "text-blue-400",
+  },
+  {
     id: "from_now",
     label: "From now on",
     description: "Only process new emails received after this moment",
     icon: Clock,
     color: "text-emerald-400",
-  },
-  {
-    id: "all_unread",
-    label: "All unread emails",
-    description: "Process all currently unread emails in the inbox",
-    icon: Inbox,
-    color: "text-blue-400",
   },
   {
     id: "last_run",
@@ -57,14 +57,13 @@ export function StartAgentDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const [selected, setSelected] = useState("from_now");
-  const [customDate, setCustomDate] = useState(
-    new Date().toISOString().slice(0, 16)
-  );
-  const [loading, setLoading] = useState(false);
-
   const config = (agent.config_json || {}) as Record<string, unknown>;
   const hasLastRun = !!config.last_run_at;
+
+  // Default: for new agents use "recent" (48h), for returning agents use "last_run"
+  const [selected, setSelected] = useState(hasLastRun ? "last_run" : "recent");
+  const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 16));
+  const [loading, setLoading] = useState(false);
 
   // Filter out "since last run" if the agent has never run
   const availableOptions = startOptions.filter(
@@ -77,11 +76,12 @@ export function StartAgentDialog({
       let startFrom: string | null = null;
 
       switch (selected) {
+        case "recent":
+          // 48h ago — best for first run or reprocessing
+          startFrom = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+          break;
         case "from_now":
           startFrom = new Date().toISOString();
-          break;
-        case "all_unread":
-          startFrom = null; // null = no filter, fetch all unread
           break;
         case "last_run":
           startFrom = config.last_run_at as string;
