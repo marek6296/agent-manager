@@ -142,87 +142,85 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
           </Card>
         </div>
 
-        {/* Right panel — tabs */}
+        {/* Right panel — Email Summaries (full width) */}
         <div className="lg:col-span-2">
-          {/* Email Summaries — only for email_summarizer */}
-          {typedAgent.type === "email_summarizer" && (
-            <div className="mb-6 space-y-3">
-              <h2 className="text-base font-semibold text-zinc-200 flex items-center gap-2">
-                <Mail className="w-4 h-4 text-emerald-400" />
-                Email Summaries
-                <span className="text-xs font-normal text-zinc-500 ml-1">({summaryLogs.length} emails processed)</span>
-              </h2>
-              {summaryLogs.length > 0 ? (
-                <div className="space-y-3">
-                  {summaryLogs.map((log: AgentLog) => {
-                    // Parse: Summarized: "Subject" → Summary text
-                    const arrow = log.message.indexOf(" → ");
-                    const subjectPart = log.message.slice(13, arrow).replace(/^"|"$/g, "");
-                    const summaryPart = arrow > 0 ? log.message.slice(arrow + 3).replace(/\.\.\.$/, "") : log.message;
-                    return (
-                      <Card key={log.id} className="border-emerald-500/10 bg-emerald-600/5">
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-3 mb-2">
-                            <p className="text-sm font-medium text-zinc-100">📧 {subjectPart}</p>
-                            <p className="text-xs text-zinc-600 shrink-0">{new Date(log.created_at).toLocaleString()}</p>
+          {typedAgent.type === "email_summarizer" ? (
+            <Card className="h-full">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-emerald-400" />
+                  Email Summaries
+                </CardTitle>
+                <span className="text-xs text-zinc-500 bg-zinc-800 px-2.5 py-1 rounded-full">
+                  {summaryLogs.length} processed
+                </span>
+              </CardHeader>
+              <CardContent>
+                {summaryLogs.length > 0 ? (
+                  <div className="space-y-3">
+                    {summaryLogs.map((log: AgentLog) => {
+                      const arrow = log.message.indexOf(" → ");
+                      const subjectPart = log.message.slice(13, arrow).replace(/^"|"$/g, "");
+                      const summaryPart = arrow > 0 ? log.message.slice(arrow + 3).replace(/\.\.\.$/, "") : log.message;
+                      return (
+                        <div
+                          key={log.id}
+                          className="group p-4 rounded-xl border border-zinc-800 hover:border-emerald-500/30 bg-zinc-900/50 hover:bg-emerald-600/5 transition-all duration-200"
+                        >
+                          <div className="flex items-start justify-between gap-3 mb-2.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-base">📧</span>
+                              <p className="text-sm font-semibold text-zinc-100 truncate">{subjectPart}</p>
+                            </div>
+                            <p className="text-xs text-zinc-600 shrink-0 mt-0.5">{new Date(log.created_at).toLocaleString()}</p>
                           </div>
-                          <p className="text-sm text-zinc-400 leading-relaxed">{summaryPart}</p>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-10 text-zinc-600 border border-zinc-800/50 rounded-xl">
-                  <Mail className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">No emails summarized yet</p>
-                  <p className="text-xs mt-1">Start the agent and click "Run Now" to process your inbox</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Activity Log */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Activity className="w-4 h-4 text-violet-400" />
-                Activity Log
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {typedLogs.length > 0 ? (
-                <div className="space-y-1">
-                  {typedLogs.map((log) => (
-                    <div key={log.id} className="flex items-start gap-3 py-2.5 border-b border-zinc-800/30 last:border-0">
-                      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-                        log.level === "error" ? "bg-red-400" :
-                        log.level === "warning" ? "bg-amber-400" :
-                        log.level === "success" ? "bg-emerald-400" : "bg-blue-400"
-                      }`} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-zinc-300">{log.message}</p>
-                        <p className="text-xs text-zinc-600 mt-0.5">{new Date(log.created_at).toLocaleString()}</p>
-                      </div>
-                      <Badge variant={
-                        log.level === "error" ? "destructive" :
-                        log.level === "warning" ? "warning" :
-                        log.level === "success" ? "success" : "secondary"
-                      } className="shrink-0 text-xs">
-                        {log.level}
-                      </Badge>
+                          <p className="text-sm text-zinc-400 leading-relaxed pl-7">{summaryPart}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-emerald-600/10 border border-emerald-500/20 flex items-center justify-center mb-4">
+                      <Mail className="w-7 h-7 text-emerald-400 opacity-60" />
                     </div>
-                  ))}
+                    <p className="text-zinc-300 font-medium mb-1">No summaries yet</p>
+                    <p className="text-sm text-zinc-500 max-w-xs">
+                      Start the agent and click <span className="text-violet-400">Run Now</span> to process your inbox.
+                      New emails will appear here automatically.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            /* For non-summarizer agents: show a simple status card */
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-violet-400" />
+                  Agent Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 ${
+                    typedAgent.status === "running"
+                      ? "bg-emerald-600/10 border border-emerald-500/20"
+                      : "bg-zinc-800 border border-zinc-700"
+                  }`}>
+                    <Bot className={`w-7 h-7 ${typedAgent.status === "running" ? "text-emerald-400" : "text-zinc-500"}`} />
+                  </div>
+                  <p className="text-zinc-300 font-medium mb-1">
+                    {typedAgent.status === "running" ? "Agent is running" : "Agent is stopped"}
+                  </p>
+                  <p className="text-sm text-zinc-500">
+                    Check <a href="/logs" className="text-violet-400 hover:underline">Logs</a> for full activity history.
+                  </p>
                 </div>
-              ) : (
-                <div className="text-center py-12 text-zinc-500">
-                  <Bot className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No activity yet</p>
-                  <p className="text-xs mt-1">Start the agent to see logs here</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
