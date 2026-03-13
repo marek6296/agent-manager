@@ -1,7 +1,7 @@
 export type AgentStatus = 'running' | 'stopped' | 'error';
 export type AgentType = 'email_summarizer' | 'email_auto_reply' | 'data_analyzer' | 'custom';
 export type WorkflowRunStatus = 'pending' | 'running' | 'completed' | 'failed';
-export type LogLevel = 'info' | 'warning' | 'error' | 'success';
+export type LogLevel = 'info' | 'warning' | 'error' | 'success' | 'pending_reply' | 'sent' | 'rejected';
 export type IntegrationProvider = 'gmail' | 'instagram' | 'telegram' | 'discord' | 'whatsapp';
 
 export interface User {

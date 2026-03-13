@@ -52,6 +52,100 @@ async function getGmailTokens(userId: string): Promise<{ accessToken: string } |
   return { accessToken };
 }
 
+async function executeMultiCapabilityAgent(agent: Agent) {
+  const tokens = await getGmailTokens(agent.user_id);
+  if (!tokens) {
+    await logAgentActivity(agent.id, "error", "Gmail not connected");
+    return;
+  }
+
+  const config = (agent.config_json || {}) as Record<string, unknown>;
+  const lastRunAt = config.last_run_at ? new Date(config.last_run_at as string) : undefined;
+  const skipAutomated = config.skip_automated !== false;
+  // Get capabilities from config, or fall back to legacy type
+  const caps: string[] = Array.isArray(config.capabilities)
+    ? (config.capabilities as string[])
+    : agent.type === "email_summarizer" ? ["summarize"]
+    : agent.type === "email_auto_reply" ? ["auto_reply"]
+    : agent.type === "data_analyzer" ? ["analyze"]
+    : ["summarize"];
+
+  const afterLabel = lastRunAt ? ` since ${lastRunAt.toLocaleTimeString()}` : " (first run)";
+  const messages = await getInboxMessages(tokens.accessToken, 5, lastRunAt, skipAutomated);
+
+  if (messages.length === 0) {
+    await logAgentActivity(agent.id, "info", `No new emails${afterLabel}`);
+    await updateLastRunAt(agent.id, config);
+    return;
+  }
+
+  await logAgentActivity(agent.id, "info", `Processing ${messages.length} email(s) with capabilities: ${caps.join(", ")}`);
+
+  for (const msg of messages) {
+    const emailContext = `Subject: ${msg.subject}\nFrom: ${msg.from}\nBody: ${msg.body.substring(0, 2000)}`;
+
+    // — SUMMARIZE —
+    if (caps.includes("summarize")) {
+      try {
+        const summary = await summarize(emailContext);
+        await logAgentActivity(agent.id, "success",
+          `Summarized: "${msg.subject}" → ${summary.substring(0, 300)}...`
+        );
+      } catch (err) {
+        await logAgentActivity(agent.id, "error", `Summarize failed: ${err instanceof Error ? err.message : "Unknown"}`);
+      }
+    }
+
+    // — ANALYZE —
+    if (caps.includes("analyze")) {
+      try {
+        const analysis = await generateText(
+          `Analyze this email and provide: 1) Priority (High/Medium/Low), 2) Sentiment, 3) Key action items, 4) Category.\n\n${emailContext}`,
+          "You are an email analyst. Be concise and structured."
+        );
+        await logAgentActivity(agent.id, "info",
+          `Analyzed: "${msg.subject}" → ${analysis.substring(0, 300)}...`
+        );
+      } catch (err) {
+        await logAgentActivity(agent.id, "error", `Analyze failed: ${err instanceof Error ? err.message : "Unknown"}`);
+      }
+    }
+
+    // — SUGGEST REPLY (pending approval) —
+    if (caps.includes("suggest_reply")) {
+      try {
+        const draft = await generateReply(emailContext, agent.prompt || "Write a professional reply.");
+        // Store as pending_reply — user must approve before sending
+        const pendingData = JSON.stringify({
+          to: msg.from,
+          subject: `Re: ${msg.subject}`,
+          original_subject: msg.subject,
+          reply: draft,
+        });
+        await logAgentActivity(agent.id, "pending_reply", pendingData);
+        await logAgentActivity(agent.id, "info",
+          `💬 Reply draft ready for: "${msg.subject}" — waiting for your approval`
+        );
+      } catch (err) {
+        await logAgentActivity(agent.id, "error", `Suggest reply failed: ${err instanceof Error ? err.message : "Unknown"}`);
+      }
+    }
+
+    // — AUTO REPLY (sends immediately) —
+    if (caps.includes("auto_reply") && !caps.includes("suggest_reply")) {
+      try {
+        const reply = await generateReply(emailContext, agent.prompt || "Write a professional reply.");
+        await sendEmail(tokens.accessToken, msg.from, `Re: ${msg.subject}`, reply);
+        await logAgentActivity(agent.id, "success", `Auto-replied to: "${msg.subject}" from ${msg.from}`);
+      } catch (err) {
+        await logAgentActivity(agent.id, "error", `Auto-reply failed: ${err instanceof Error ? err.message : "Unknown"}`);
+      }
+    }
+  }
+
+  await updateLastRunAt(agent.id, config);
+}
+
 async function logAgentActivity(agentId: string, level: string, message: string) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
   await supabase.from("agent_logs").insert({
@@ -59,98 +153,6 @@ async function logAgentActivity(agentId: string, level: string, message: string)
     level,
     message,
   });
-}
-
-async function executeEmailSummarizer(agent: Agent) {
-  const tokens = await getGmailTokens(agent.user_id);
-  if (!tokens) {
-    await logAgentActivity(agent.id, "error", "Gmail not connected");
-    return;
-  }
-
-  try {
-    const config = (agent.config_json || {}) as Record<string, unknown>;
-    const lastRunAt = config.last_run_at ? new Date(config.last_run_at as string) : undefined;
-    const skipAutomated = config.skip_automated !== false; // default true
-    const afterLabel = lastRunAt ? ` since ${lastRunAt.toLocaleTimeString()}` : " (first run - last 5 unread)";
-
-    const messages = await getInboxMessages(tokens.accessToken, 5, lastRunAt, skipAutomated);
-    if (messages.length === 0) {
-      await logAgentActivity(agent.id, "info", `No new emails${afterLabel}`);
-      await updateLastRunAt(agent.id, config);
-      return;
-    }
-
-    for (const msg of messages) {
-      const summary = await summarize(
-        `Subject: ${msg.subject}\nFrom: ${msg.from}\nBody: ${msg.body}`,
-      );
-      await logAgentActivity(
-        agent.id,
-        "success",
-        `Summarized: "${msg.subject}" → ${summary.substring(0, 200)}...`
-      );
-    }
-    await updateLastRunAt(agent.id, config);
-  } catch (err) {
-    await logAgentActivity(agent.id, "error", `Error: ${err instanceof Error ? err.message : "Unknown"}`);
-  }
-}
-
-async function executeEmailAutoReply(agent: Agent) {
-  const tokens = await getGmailTokens(agent.user_id);
-  if (!tokens) {
-    await logAgentActivity(agent.id, "error", "Gmail not connected");
-    return;
-  }
-
-  try {
-    const config = (agent.config_json || {}) as Record<string, unknown>;
-    const lastRunAt = config.last_run_at ? new Date(config.last_run_at as string) : undefined;
-    const skipAutomated = config.skip_automated !== false; // default true
-
-    const messages = await getInboxMessages(tokens.accessToken, 3, lastRunAt, skipAutomated);
-    if (messages.length === 0) {
-      await logAgentActivity(agent.id, "info", "No new emails to reply to");
-      await updateLastRunAt(agent.id, config);
-      return;
-    }
-
-    for (const msg of messages) {
-      const reply = await generateReply(
-        `Subject: ${msg.subject}\nFrom: ${msg.from}\nBody: ${msg.body}`,
-        agent.prompt || "Generate a professional, helpful reply."
-      );
-
-      await sendEmail(
-        tokens.accessToken,
-        msg.from,
-        `Re: ${msg.subject}`,
-        reply
-      );
-
-      await logAgentActivity(
-        agent.id,
-        "success",
-        `Auto-replied to: "${msg.subject}" from ${msg.from}`
-      );
-    }
-  } catch (err) {
-    await logAgentActivity(agent.id, "error", `Error: ${err instanceof Error ? err.message : "Unknown"}`);
-  }
-}
-
-async function executeDataAnalyzer(agent: Agent) {
-  try {
-    const prompt = agent.prompt || "Analyze the following data and provide insights:";
-    const result = await generateText(
-      prompt,
-      "You are a data analyst. Provide clear, actionable insights."
-    );
-    await logAgentActivity(agent.id, "success", `Analysis complete: ${result.substring(0, 300)}...`);
-  } catch (err) {
-    await logAgentActivity(agent.id, "error", `Error: ${err instanceof Error ? err.message : "Unknown"}`);
-  }
 }
 
 export async function runAgentCycle() {
@@ -171,23 +173,10 @@ export async function runAgentCycle() {
 
   for (const agent of agents as Agent[]) {
     // Log cycle start so it's always visible in /logs
-    await logAgentActivity(agent.id, "info", `⚡ Cycle started — checking for new emails...`);
+    await logAgentActivity(agent.id, "info", `⚡ Cycle started`);
 
     try {
-      switch (agent.type) {
-        case "email_summarizer":
-          await executeEmailSummarizer(agent);
-          break;
-        case "email_auto_reply":
-          await executeEmailAutoReply(agent);
-          break;
-        case "data_analyzer":
-          await executeDataAnalyzer(agent);
-          break;
-        default:
-          await logAgentActivity(agent.id, "warning", `Unknown agent type: ${agent.type}`);
-      }
-
+      await executeMultiCapabilityAgent(agent);
       await logAgentActivity(agent.id, "info", `✅ Cycle completed`);
     } catch (err) {
       console.error(`[AgentRunner] Error executing agent ${agent.id}:`, err);

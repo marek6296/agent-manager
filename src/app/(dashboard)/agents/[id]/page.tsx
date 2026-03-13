@@ -2,10 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bot, Clock, Cpu, ArrowLeft, Activity, Info, Mail } from "lucide-react";
+import { Bot, Clock, Cpu, ArrowLeft, Activity, Info, Mail, MessageSquare, BarChart2 } from "lucide-react";
 import Link from "next/link";
 import { AgentDetailActions } from "@/components/dashboard/agent-detail-actions";
 import { RunNowButton } from "@/components/dashboard/run-now-button";
+import { PendingRepliesPanel } from "@/components/dashboard/pending-replies-panel";
 import type { Agent, AgentLog } from "@/lib/types";
 
 const agentTypeInfo: Record<string, { what: string; how: string; promptLabel: string }> = {
@@ -37,7 +38,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
 
   const [{ data: agent }, { data: logs }] = await Promise.all([
     supabase.from("agents").select("*").eq("id", id).single(),
-    supabase.from("agent_logs").select("*").eq("agent_id", id).order("created_at", { ascending: false }).limit(20),
+    supabase.from("agent_logs").select("*").eq("agent_id", id).order("created_at", { ascending: false }).limit(50),
   ]);
 
   if (!agent) notFound();
@@ -47,10 +48,22 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
   const agentInfo = agentTypeInfo[typedAgent.type] || agentTypeInfo.custom;
   const config = (typedAgent.config_json || {}) as Record<string, unknown>;
   const lastRunAt = config.last_run_at ? new Date(config.last_run_at as string).toLocaleString() : "Never";
-  // Extract summary-type logs for the email_summarizer panel
-  const summaryLogs = typedLogs.filter(
-    (l) => l.level === "success" && l.message.startsWith("Summarized:")
-  );
+
+  // Resolve capabilities (new multi-cap or legacy single type)
+  const caps: string[] = Array.isArray(config.capabilities)
+    ? (config.capabilities as string[])
+    : typedAgent.type === "email_summarizer" ? ["summarize"]
+    : typedAgent.type === "email_auto_reply" ? ["auto_reply"]
+    : typedAgent.type === "data_analyzer" ? ["analyze"]
+    : ["summarize"];
+
+  const summaryLogs = typedLogs.filter((l) => l.level === "success" && l.message.startsWith("Summarized:"));
+  const pendingLogs = typedLogs.filter((l) => l.level === "pending_reply");
+  const analysisLogs = typedLogs.filter((l) => l.level === "info" && l.message.startsWith("Analyzed:"));
+
+  const hasSummarize = caps.includes("summarize");
+  const hasSuggestReply = caps.includes("suggest_reply");
+  const hasAnalyze = caps.includes("analyze");
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -142,11 +155,13 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
           </Card>
         </div>
 
-        {/* Right panel — Email Summaries (full width) */}
-        <div className="lg:col-span-2">
-          {typedAgent.type === "email_summarizer" ? (
-            <Card className="h-full">
-              <CardHeader className="flex flex-row items-center justify-between">
+        {/* Right panel — capability panels */}
+        <div className="lg:col-span-2 space-y-5">
+
+          {/* Email Summaries */}
+          {hasSummarize && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Mail className="w-4 h-4 text-emerald-400" />
                   Email Summaries
@@ -163,16 +178,13 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                       const subjectPart = log.message.slice(13, arrow).replace(/^"|"$/g, "");
                       const summaryPart = arrow > 0 ? log.message.slice(arrow + 3).replace(/\.\.\.$/, "") : log.message;
                       return (
-                        <div
-                          key={log.id}
-                          className="group p-4 rounded-xl border border-zinc-800 hover:border-emerald-500/30 bg-zinc-900/50 hover:bg-emerald-600/5 transition-all duration-200"
-                        >
-                          <div className="flex items-start justify-between gap-3 mb-2.5">
+                        <div key={log.id} className="p-4 rounded-xl border border-zinc-800 hover:border-emerald-500/30 bg-zinc-900/50 hover:bg-emerald-600/5 transition-all duration-200">
+                          <div className="flex items-start justify-between gap-3 mb-2">
                             <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-base">📧</span>
+                              <span>📧</span>
                               <p className="text-sm font-semibold text-zinc-100 truncate">{subjectPart}</p>
                             </div>
-                            <p className="text-xs text-zinc-600 shrink-0 mt-0.5">{new Date(log.created_at).toLocaleString()}</p>
+                            <p className="text-xs text-zinc-600 shrink-0">{new Date(log.created_at).toLocaleString()}</p>
                           </div>
                           <p className="text-sm text-zinc-400 leading-relaxed pl-7">{summaryPart}</p>
                         </div>
@@ -180,44 +192,85 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                     })}
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-16 h-16 rounded-2xl bg-emerald-600/10 border border-emerald-500/20 flex items-center justify-center mb-4">
-                      <Mail className="w-7 h-7 text-emerald-400 opacity-60" />
-                    </div>
-                    <p className="text-zinc-300 font-medium mb-1">No summaries yet</p>
-                    <p className="text-sm text-zinc-500 max-w-xs">
-                      Start the agent and click <span className="text-violet-400">Run Now</span> to process your inbox.
-                      New emails will appear here automatically.
-                    </p>
+                  <div className="text-center py-10 text-zinc-500">
+                    <Mail className="w-7 h-7 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No summaries yet — run the agent to process your inbox</p>
                   </div>
                 )}
               </CardContent>
             </Card>
-          ) : (
-            /* For non-summarizer agents: show a simple status card */
-            <Card className="h-full">
-              <CardHeader>
+          )}
+
+          {/* Pending Replies */}
+          {hasSuggestReply && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-violet-400" />
-                  Agent Status
+                  <MessageSquare className="w-4 h-4 text-blue-400" />
+                  Pending Reply Drafts
                 </CardTitle>
+                {pendingLogs.length > 0 && (
+                  <span className="text-xs font-medium bg-blue-600/20 text-blue-300 border border-blue-500/30 px-2.5 py-1 rounded-full">
+                    {pendingLogs.length} waiting
+                  </span>
+                )}
               </CardHeader>
               <CardContent>
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 ${
-                    typedAgent.status === "running"
-                      ? "bg-emerald-600/10 border border-emerald-500/20"
-                      : "bg-zinc-800 border border-zinc-700"
-                  }`}>
-                    <Bot className={`w-7 h-7 ${typedAgent.status === "running" ? "text-emerald-400" : "text-zinc-500"}`} />
+                <PendingRepliesPanel logs={pendingLogs} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Analysis */}
+          {hasAnalyze && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BarChart2 className="w-4 h-4 text-amber-400" />
+                  Email Analysis
+                </CardTitle>
+                <span className="text-xs text-zinc-500 bg-zinc-800 px-2.5 py-1 rounded-full">
+                  {analysisLogs.length} analyzed
+                </span>
+              </CardHeader>
+              <CardContent>
+                {analysisLogs.length > 0 ? (
+                  <div className="space-y-3">
+                    {analysisLogs.map((log: AgentLog) => {
+                      const arrow = log.message.indexOf(" → ");
+                      const subjectPart = log.message.slice(10, arrow).replace(/^"|"$/g, "");
+                      const analysisPart = arrow > 0 ? log.message.slice(arrow + 3) : log.message;
+                      return (
+                        <div key={log.id} className="p-4 rounded-xl border border-zinc-800 hover:border-amber-500/20 bg-zinc-900/50 hover:bg-amber-600/5 transition-all duration-200">
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span>🔍</span>
+                              <p className="text-sm font-semibold text-zinc-100 truncate">{subjectPart}</p>
+                            </div>
+                            <p className="text-xs text-zinc-600 shrink-0">{new Date(log.created_at).toLocaleString()}</p>
+                          </div>
+                          <p className="text-sm text-zinc-400 leading-relaxed pl-7 whitespace-pre-line">{analysisPart}</p>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <p className="text-zinc-300 font-medium mb-1">
-                    {typedAgent.status === "running" ? "Agent is running" : "Agent is stopped"}
-                  </p>
-                  <p className="text-sm text-zinc-500">
-                    Check <a href="/logs" className="text-violet-400 hover:underline">Logs</a> for full activity history.
-                  </p>
-                </div>
+                ) : (
+                  <div className="text-center py-10 text-zinc-500">
+                    <BarChart2 className="w-7 h-7 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No analysis yet — run the agent to analyze your emails</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Fallback for agents with only auto_reply */}
+          {!hasSummarize && !hasSuggestReply && !hasAnalyze && (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <Bot className="w-8 h-8 text-zinc-600 mb-3" />
+                <p className="text-zinc-400 text-sm">Auto-reply agent is running</p>
+                <p className="text-xs text-zinc-600 mt-1">Check <a href="/logs" className="text-violet-400 hover:underline">Logs</a> for sent replies</p>
               </CardContent>
             </Card>
           )}

@@ -29,6 +29,45 @@ export async function createAgent(formData: FormData) {
   revalidatePath("/agents");
 }
 
+export async function createAgentMulti(data: {
+  name: string;
+  prompt: string;
+  schedule: string;
+  integration_id: string | null;
+  capabilities: string[];
+}) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  // Determine primary type for backward compat
+  const primaryType = data.capabilities.includes("summarize")
+    ? "email_summarizer"
+    : data.capabilities.includes("auto_reply")
+    ? "email_auto_reply"
+    : data.capabilities.includes("analyze")
+    ? "data_analyzer"
+    : "custom";
+
+  const { error } = await supabase.from("agents").insert({
+    user_id: user.id,
+    name: data.name,
+    type: primaryType,
+    prompt: data.prompt,
+    schedule: data.schedule,
+    integration_id: data.integration_id,
+    status: "stopped",
+    config_json: {
+      capabilities: data.capabilities,
+      skip_automated: true,
+    },
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/agents");
+}
+
+
 export async function updateAgent(id: string, data: { name?: string; type?: string; prompt?: string; schedule?: string; integration_id?: string | null }) {
   const supabase = await createClient();
 
