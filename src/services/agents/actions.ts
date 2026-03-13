@@ -1,0 +1,83 @@
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+
+export async function createAgent(formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const name = formData.get("name") as string;
+  const type = formData.get("type") as string;
+  const prompt = formData.get("prompt") as string;
+  const schedule = formData.get("schedule") as string || "*/5 * * * *";
+  const integrationId = formData.get("integration_id") as string || null;
+
+  const { error } = await supabase.from("agents").insert({
+    user_id: user.id,
+    name,
+    type,
+    prompt,
+    schedule,
+    integration_id: integrationId || null,
+    status: "stopped",
+    config_json: {},
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/agents");
+}
+
+export async function updateAgent(id: string, formData: FormData) {
+  const supabase = await createClient();
+
+  const name = formData.get("name") as string;
+  const type = formData.get("type") as string;
+  const prompt = formData.get("prompt") as string;
+  const schedule = formData.get("schedule") as string;
+  const integrationId = formData.get("integration_id") as string || null;
+
+  const { error } = await supabase.from("agents").update({
+    name,
+    type,
+    prompt,
+    schedule,
+    integration_id: integrationId || null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/agents");
+  revalidatePath(`/agents/${id}`);
+}
+
+export async function toggleAgentStatus(id: string, newStatus: "running" | "stopped") {
+  const supabase = await createClient();
+
+  const { error } = await supabase.from("agents").update({
+    status: newStatus,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+
+  if (error) throw new Error(error.message);
+
+  // Log the status change
+  await supabase.from("agent_logs").insert({
+    agent_id: id,
+    level: "info",
+    message: `Agent ${newStatus === "running" ? "started" : "stopped"}`,
+  });
+
+  revalidatePath("/agents");
+  revalidatePath(`/agents/${id}`);
+  revalidatePath("/dashboard");
+}
+
+export async function deleteAgent(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("agents").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/agents");
+  revalidatePath("/dashboard");
+}
