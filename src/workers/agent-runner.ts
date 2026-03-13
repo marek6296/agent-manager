@@ -71,10 +71,24 @@ async function executeMultiCapabilityAgent(agent: Agent) {
     : ["summarize"];
 
   const afterLabel = lastRunAt ? ` since ${lastRunAt.toLocaleTimeString()}` : " (first run)";
-  const messages = await getInboxMessages(tokens.accessToken, 5, lastRunAt, skipAutomated);
+  // Get raw count (without JS filter) for debugging
+  const rawMessages = await getInboxMessages(tokens.accessToken, 10, lastRunAt, false);
+  const filteredMessages = await getInboxMessages(tokens.accessToken, 5, lastRunAt, skipAutomated);
+
+  await logAgentActivity(agent.id, "info",
+    `Gmail returned ${rawMessages.length} emails total, ${filteredMessages.length} passed filter${afterLabel}`
+  );
+
+  const messages = filteredMessages;
 
   if (messages.length === 0) {
-    await logAgentActivity(agent.id, "info", `No new emails${afterLabel}`);
+    if (rawMessages.length > 0) {
+      // All emails were filtered — log which ones were rejected
+      const rejected = rawMessages.map(m => `"${m.subject}" from ${m.from}`).join("; ");
+      await logAgentActivity(agent.id, "warning", `All ${rawMessages.length} emails filtered as automated: ${rejected.substring(0, 300)}`);
+    } else {
+      await logAgentActivity(agent.id, "info", `No emails in inbox${afterLabel}`);
+    }
     await updateLastRunAt(agent.id, config);
     return;
   }
