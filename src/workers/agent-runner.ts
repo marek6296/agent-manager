@@ -158,6 +158,9 @@ export async function runAgentCycle() {
   console.log(`[AgentRunner] Processing ${agents.length} active agents...`);
 
   for (const agent of agents as Agent[]) {
+    // Log cycle start so it's always visible in /logs
+    await logAgentActivity(agent.id, "info", `⚡ Cycle started — checking for new emails...`);
+
     try {
       switch (agent.type) {
         case "email_summarizer":
@@ -172,6 +175,8 @@ export async function runAgentCycle() {
         default:
           await logAgentActivity(agent.id, "warning", `Unknown agent type: ${agent.type}`);
       }
+
+      await logAgentActivity(agent.id, "info", `✅ Cycle completed`);
     } catch (err) {
       console.error(`[AgentRunner] Error executing agent ${agent.id}:`, err);
       await supabase.from("agents").update({ status: "error" }).eq("id", agent.id);
