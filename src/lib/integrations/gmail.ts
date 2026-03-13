@@ -89,79 +89,156 @@ export async function getInboxMessages(
   skipAutomated: boolean = true
 ): Promise<GmailMessage[]> {
   // Build query: only fetch unread emails, optionally newer than afterDate
-  let q = "is:unread";
+  let q = "is:unread in:inbox";
   if (afterDate) {
     q += ` after:${Math.floor(afterDate.getTime() / 1000)}`;
   }
   if (skipAutomated) {
-    // Exclude automated senders and categories
     q += [
+      // THE most powerful filter — Gmail auto-tags bulk emails with unsubscribe links
+      " -has:unsubscribe",
+      // Gmail smart labels
+      " -label:^smartlabel_newsletter",
+      " -label:^smartlabel_notification",
+      " -label:^smartlabel_promo",
+      // Gmail categories
+      " -category:promotions",
+      " -category:updates",
+      // Known automated from patterns
       " -from:noreply",
       " -from:no-reply",
-      " -from:notifications",
-      " -from:notification",
       " -from:donotreply",
       " -from:do-not-reply",
       " -from:mailer",
-      " -from:bounce",
-      " -from:automated",
+      " -from:notification",
       " -from:newsletter",
       " -from:alerts",
+      " -from:autoconfirm",
+      " -from:automated",
+      " -from:bounce",
+      " -from:info@vercel",
       " -from:support@vercel",
       " -from:github",
-      " -category:promotions",
-      " -category:updates",
+      " -from:supabase",
     ].join("");
   }
+
   const listResponse = await fetch(
-    `${GMAIL_API_BASE}/users/me/messages?maxResults=${maxResults}&labelIds=INBOX&q=${encodeURIComponent(q)}`,
+    `${GMAIL_API_BASE}/users/me/messages?maxResults=${maxResults * 2}&labelIds=INBOX&q=${encodeURIComponent(q)}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
-  const listData = await listResponse.json();
-  if (!listData.messages) return [];
-
-  const messages: GmailMessage[] = [];
-  for (const msg of listData.messages) {
-    const msgResponse = await fetch(
-      `${GMAIL_API_BASE}/users/me/messages/${msg.id}?format=full`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    const msgData = await msgResponse.json();
-
-    const headers = msgData.payload?.headers || [];
-    const getHeader = (name: string) =>
-      headers.find((h: { name: string; value: string }) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
-
-    let body = "";
-    if (msgData.payload?.body?.data) {
-      body = Buffer.from(msgData.payload.body.data, "base64").toString("utf-8");
-    } else if (msgData.payload?.parts) {
-      const textPart = msgData.payload.parts.find(
-        (p: { mimeType: string }) => p.mimeType === "text/plain"
-      );
-      if (textPart?.body?.data) {
-        body = Buffer.from(textPart.body.data, "base64").toString("utf-8");
-      }
-    }
-
-    messages.push({
-      id: msgData.id,
-      threadId: msgData.threadId,
-      snippet: msgData.snippet,
-      subject: getHeader("Subject"),
-      from: getHeader("From"),
-      to: getHeader("To"),
-      date: getHeader("Date"),
-      body,
-      labels: msgData.labelIds || [],
-    });
+  if (!listResponse.ok) {
+    const err = await listResponse.text();
+    throw new Error(`Gmail API error: ${err}`);
   }
 
-  return messages;
+  const listData = await listResponse.json();
+  if (!listData.messages || listData.messages.length === 0) return [];
+
+  const messages = await Promise.all(
+    listData.messages.map(async (msg: { id: string }) => {
+      const msgResponse = await fetch(
+        `${GMAIL_API_BASE}/users/me/messages/${msg.id}?format=full`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const msgData = await msgResponse.json();
+      return parseGmailMessage(msgData);
+    })
+  );
+
+  // Second layer: JS-level filter on actual email content
+  const filtered = skipAutomated
+    ? messages.filter((msg) => isHumanEmail(msg))
+    : messages;
+
+  return filtered.slice(0, maxResults);
+}
+
+/**
+ * Heuristic check: is this likely a real human-written email?
+ * Returns false for bulk/automated emails that slipped through Gmail filters.
+ */
+function isHumanEmail(msg: GmailMessage): boolean {
+  const from = (msg.from || "").toLowerCase();
+  const subject = (msg.subject || "").toLowerCase();
+  const body = (msg.body || "").toLowerCase();
+
+  // Reject if body contains classic bulk-email markers
+  const bodyMarkers = [
+    "unsubscribe",
+    "opt out",
+    "email preferences",
+    "you are receiving this",
+    "you received this email because",
+    "this is an automated",
+    "automated message",
+    "do not reply to this email",
+    "do not reply to this message",
+    "privacy policy",
+    "terms of service",
+    "terms & conditions",
+    "view in browser",
+    "view this email in your browser",
+    "click here to unsubscribe",
+  ];
+  if (bodyMarkers.some((marker) => body.includes(marker))) return false;
+
+  // Reject if from address looks automated
+  const fromMarkers = [
+    "noreply", "no-reply", "donotreply", "do-not-reply",
+    "mailer", "notification", "newsletter", "alerts",
+    "automated", "bounce", "system@", "robot@",
+    "support@apple", "news@", "info@", "updates@",
+    "promotions@", "marketing@", "hello@temu", "info@trading",
+  ];
+  if (fromMarkers.some((m) => from.includes(m))) return false;
+
+  // Reject based on subject patterns
+  const subjectMarkers = [
+    "unsubscribe", "newsletter", "promotion", "offer", "discount",
+    "% off", "sale ends", "claim your", "you've been selected",
+    "verify your email", "confirm your email",
+    "deployment notification", "failed deployment", "build failed",
+    "your account", "terms of service have", "privacy policy update",
+    "new project launched", "invoice #",
+  ];
+  if (subjectMarkers.some((m) => subject.includes(m))) return false;
+
+  return true;
 }
 
 
+function parseGmailMessage(msgData: Record<string, unknown>): GmailMessage {
+  const payload = msgData.payload as Record<string, unknown> | undefined;
+  const headers: { name: string; value: string }[] = (payload?.headers as { name: string; value: string }[]) || [];
+  const getHeader = (name: string) =>
+    headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
+
+  let body = "";
+  const payloadBody = payload?.body as { data?: string } | undefined;
+  if (payloadBody?.data) {
+    body = Buffer.from(payloadBody.data, "base64").toString("utf-8");
+  } else if (payload?.parts) {
+    const parts = payload.parts as { mimeType: string; body?: { data?: string } }[];
+    const textPart = parts.find((p) => p.mimeType === "text/plain");
+    if (textPart?.body?.data) {
+      body = Buffer.from(textPart.body.data, "base64").toString("utf-8");
+    }
+  }
+
+  return {
+    id: msgData.id as string,
+    threadId: msgData.threadId as string,
+    snippet: msgData.snippet as string,
+    subject: getHeader("Subject"),
+    from: getHeader("From"),
+    to: getHeader("To"),
+    date: getHeader("Date"),
+    body,
+    labels: (msgData.labelIds as string[]) || [],
+  };
+}
 
 export async function sendEmail(
   accessToken: string,
