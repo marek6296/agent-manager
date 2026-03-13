@@ -8,7 +8,6 @@ export default async function InboxPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Fetch all agents that have email capabilities
   const { data: agents } = await supabase
     .from("agents")
     .select("*")
@@ -27,7 +26,7 @@ export default async function InboxPage() {
     );
   }
 
-  // Fetch logs for all agents
+  // Fetch summary logs for all agents
   const agentIds = agents.map((a) => a.id);
   const { data: allLogs } = await supabase
     .from("agent_logs")
